@@ -16,6 +16,12 @@ For pixie use this file https://github.com/jiiihpeeh/pixie/blob/master/src/pixie
 npm run tauri build
 ```
 
+Python (optional but faster loading and lighter - skips pyodide)
+```
+pip install sympy
+```
+
+
 # Tauri + React
 
 This template should help get you started developing with Tauri and React in Vite.
