@@ -2,6 +2,7 @@ Easy way:
 https://github.com/jiiihpeeh/erroshavelimitstoo-Tauri/releases/tag/0.3.0
 
 Building
+
 Install depencies:
 ```
 npm i
