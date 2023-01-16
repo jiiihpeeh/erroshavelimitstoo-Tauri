@@ -1,7 +1,7 @@
 This is a standalone version of https://github.com/jiiihpeeh/errorsHaveLimitsToo. (Online demo https://kukkoilija.chickenkiller.com/errorshavelimitstoo/).
 It utilizes system  using Tauri and Nim
 
-It is recommended to have Python and SymPy intalled in your system altough it works without them as well (greater loading times).
+It is recommended to have Python and SymPy installed in your system altough it works without them as well (greater loading times).
 If you want PDF export LaTeX is needed too (either `xelatex` or `pdflatex`) and available in your `PATH`.
 
 Easy way:
