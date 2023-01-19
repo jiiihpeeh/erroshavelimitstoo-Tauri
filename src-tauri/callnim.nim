@@ -12,18 +12,36 @@ var
     scriptLoaded = false
 
 type 
-    NimCall = object 
-        call, argument: string
-
     LaTeXPath = object 
-        exists: bool 
-        path: string
+        exists: bool
+        path : string
 
-    LaTeXFile = object 
-        content,target: string
+    PngEncode = object 
+        result: bool 
+        base64: string
 
-    ImageFile = object 
-        content,target: string 
+    Call = enum 
+        runLatex = 0
+        hasLatex = 1
+        write = 2
+        init = 3
+        parse = 4
+        calculate = 5
+        saveSvgAsPng = 6
+        getPngFromSvg = 7
+
+    CallObject = object 
+        case call : Call
+        of runLatex, saveSVGasPNG, write:
+            content,target: string
+        of hasLatex:
+            discard
+        of init:
+            folder: string
+        of parse, calculate:
+            argument: string
+        of getPngFromSvg:
+            svgString: string
 
 
 when defined windows:
@@ -41,6 +59,23 @@ else:
 #     body
 #   finally:
 #     discard callMethod(context, "__exit__", None, None, None)
+
+template withExecptions(actions: untyped): cstring =
+    var output : cstring
+    try:
+        actions
+        output = "true".cstring
+    except:
+        output = "false".cstring
+    output
+
+template withOutputExecption(action: untyped): cstring =
+    var output : cstring
+    try:
+        output = action
+    except:
+        output = "false".cstring
+    output
 
 
 proc loadScript(folder:string): bool=
@@ -60,7 +95,7 @@ proc loadScript(folder:string): bool=
         let pychacheDir = joinPath(folder,"__pycache__")
         if dirExists(pychacheDir):
             removeDir(pychacheDir)
-        path.writeFile(uncompress(parseEquationModule))
+        path.writeFile parseEquationModule.uncompress
         discard sys.path.append(folder.cstring)
         let moduleName = fileName[0..^4].cstring
         parseEquation = pyImport(moduleName)
@@ -80,48 +115,34 @@ proc getLateXPath():LaTeXPath=
 proc hasLatex():cstring=
     return toJson(getLatexPath()).cstring
 
-proc runLaTeX(args: string):cstring=
-    try:
-        let latexBin = getLatexPath()
-        if latexBin.exists:
-            let 
-                fileInfo = args.fromJson(LaTeXFile)
-                curDir = getCurrentDir()
-                tempDir = createTempDir("errorshavelimits", "_temp")
-            setCurrentDir(tempDir)
-            writeFile("temp.tex", fileInfo.content)
-            let exitCode = execCmd(latexBin.path & " temp.tex")
-            if exitCode == 0:
-                moveFile("temp.pdf", fileInfo.target)
-                setCurrentDir(curDir)
-                removeDir(tempDir)
-                return "true".cstring
-            else:
-                setCurrentDir(curDir)
-                removeDir(tempDir)
-        return "false".cstring
-    except:
-        return "false".cstring
+proc runLaTeX(content: string, target: string)=
+    let latexBin = getLatexPath()
+    if latexBin.exists:
+        let 
+            curDir = getCurrentDir()
+            tempDir = createTempDir("errorshavelimits", "_temp")
+        tempDir.setCurrentDir
+        "temp.tex".writeFile content
+        let exitCode = execCmd(latexBin.path & " temp.tex")
+        if exitCode == 0:
+            "temp.pdf".moveFile target
+            curDir.setCurrentDir
+            tempDir.removeDir
+        else:
+            curDir.setCurrentDir
+            tempDir.removeDir
 
-proc writeFileToPath(args:string):cstring=
-    try:
-        let fileInfo = args.fromJson(LaTeXFile)
-        writeFile(fileInfo.target, fileInfo.content)
-        return "true".cstring
-    except:
-        return "false".cstring
+proc writeFileToPath(content: string, target: string)=
+    target.writeFile content
+
 
 proc parse(equation:string):cstring=
-    try:
-        return parseEquation.parse(equation).to(string).cstring
-    except:
-        return "false".cstring
+    return parseEquation.parse(equation).to(string).cstring
+
 
 proc calculate(equation:string):cstring=
-    try:
-        return parseEquation.calculate(equation).to(string).cstring
-    except:
-        return "false".cstring
+    return parseEquation.calculate(equation).to(string).cstring
+
 
 proc svgToPng(svg:string):string =
     let 
@@ -137,45 +158,41 @@ proc svgToPng(svg:string):string =
     image.draw(img,scale(vec2(scaleF, scaleF)))
     result = encodePng(image)
 
-proc getPngFromSvg(args:string):cstring=
+proc getPngFromSvg(svg:string):cstring=
     try:
-        let fileInfo = args.fromJson(ImageFile)
-        let png = svgToPng(fileInfo.content)
-        result = encode(png).cstring
+        let png = svgToPng(svg)
+        result = PngEncode( result: true, base64: encode(png)).toJson.cstring
     except:
-        result = "false".cstring
+        result = PngEncode( result: false, base64: "").toJson.cstring
 
-proc saveSvgAsPng(args:string):cstring=
-    try:
-        let fileInfo = args.fromJson(ImageFile)
-        let png = svgToPng(fileInfo.content)
-        writeFile(fileInfo.target,png)
-        return "true".cstring
-    except:
-        return "false".cstring
+proc saveSvgAsPng(content: string, target: string)=
+    let png = svgToPng(content)
+    target.writeFile png
 
 
 proc callNim*(call: cstring):cstring{.exportc.}=
     #echo "CALLER"
-    var calling : NimCall 
+    var calling : CallObject 
     try:
         #echo "NimPy: " & $call
-        calling = ($call).fromJson(NimCall)
+        calling = ($call).fromJson(CallObject)
     except:
         discard
 
     echo calling
     case calling.call:
-    of "runLaTex":
-        return runLaTeX(calling.argument)
-    of "hasLatex":
+    of runLaTex:
+        result = withExecptions: 
+            runLaTeX(calling.content, calling.target)
+    of hasLatex:
         return hasLatex()
-    of "write":
-        return writeFileToPath(calling.argument)
-    of "init":
+    of write:
+        result = withExecptions: 
+            writeFileToPath(calling.content, calling.target)
+    of init:
         echo "initializing Python"
         if not scriptLoaded:
-            scriptLoaded = loadScript(calling.argument)
+            scriptLoaded = loadScript(calling.folder)
             if scriptLoaded:
                 echo "Succesfully loaded SymPy"
                 return "true".cstring
@@ -185,15 +202,16 @@ proc callNim*(call: cstring):cstring{.exportc.}=
         else:
             echo "Succesfully loaded SymPy"
             return "true".cstring
-    of "parse":
-        return parse(calling.argument)
-    of "calculate":
-        return calculate(calling.argument)
-    of "saveSVGasPNG":
-        return saveSvgAsPng(calling.argument)
-    of "getPngFromSvg":
-        return getPngFromSvg(calling.argument)
-
-    
-    return "false".cstring
-
+    of parse:
+        result = withOutputExecption:
+            parse(calling.argument)
+            
+    of calculate:
+        result = withOutputExecption:
+            calculate(calling.argument)
+        
+    of saveSVGasPNG:
+        result = withExecptions: 
+            saveSvgAsPng(calling.content, calling.target)
+    of getPngFromSvg:
+        return getPngFromSvg(calling.svgString)
