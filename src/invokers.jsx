@@ -1,15 +1,51 @@
 import { invoke } from '@tauri-apps/api';
 import { base64StringToBlob, blobToDataURL } from 'blob-util';
 
+/* 
+Call = enum 
+runLatex = 0
+hasLatex = 1
+write = 2
+init = 3
+parse = 4
+calculate = 5
+saveSvgAsPng = 6
+getPngFromSvg = 7
+
+CallObject = object 
+case call : Call
+of runLatex, saveSVGasPNG, write:
+    content,target: string
+of hasLatex:
+    discard
+of init:
+    folder: string
+of parse, calculate:
+    argument: string
+of getPngFromSvg:
+    svgString: string 
+*/
+
+
+const enums = {
+    runLatex: 0,
+    hasLatex: 1,
+    write : 2,
+    init: 3,
+    parse: 4,
+    calculate:  5,
+    saveSvgAsPng : 6,
+    getPngFromSvg : 7
+}
+
 
 export const hasLatex = async() =>{
-    let name = JSON.stringify({call:"hasLatex"})
+    let name = JSON.stringify({call: enums["hasLatex"]})
     return JSON.parse(await invoke("nim_caller", {name}));
 }
 
 export const runLatex = async(content, savePath) => {
-    let argument = JSON.stringify({content: content, target: savePath})
-    let name = JSON.stringify({call:"runLatex", argument: argument});
+    let name = JSON.stringify({call: enums["runLatex"], content: content, target: savePath});
     let resp = await invoke("nim_caller", {name});
     switch(resp){
         case 'true':
@@ -22,7 +58,8 @@ export const runLatex = async(content, savePath) => {
 }
 
 export const systemPython = async(directory) => {
-    let name = JSON.stringify({call:"init", argument: directory});
+    let name = JSON.stringify({call: enums["init"], folder: directory});
+    console.log(name)
     const resp = await invoke("nim_caller", {name});
     console.log(resp)
     switch(resp){
@@ -34,14 +71,15 @@ export const systemPython = async(directory) => {
 }
 
 export const runSympy = async (data) =>{
-    const name = JSON.stringify({call: data.mode, argument: data.input_str});
+    console.log(data.mode)
+    const name = JSON.stringify({call: enums[data.mode], argument: data.input_str});
+    console.log(name)
     let resp = await invoke("nim_caller", {name});
     return JSON.parse(resp);
 }
 
 export const fileWriter = async(path, content)=> {
-    let argument = JSON.stringify({content: content, target: path});
-    const name = JSON.stringify({call: "write", argument: argument});
+    const name = JSON.stringify({call: enums["write"], content: content, target: path});
     let resp = await invoke("nim_caller", {name});
     switch(resp){
         case 'true':
@@ -63,16 +101,11 @@ export const getPath = async() =>{
 }
 
 export const getPngFromSvg = async(content) => {
-    let argument = JSON.stringify({content: content, target: ""});
-    const name = JSON.stringify({call: "getPngFromSvg", argument: argument});
-    let resp = await invoke("nim_caller", {name});
-    //console.log(resp)
-    switch(resp){
-        case 'false':
-            return null;
-        default:
-            let blob = base64StringToBlob(resp, "image/png");
-            return blob //await  blobToDataURL(blob);
+    const name = JSON.stringify({call: enums["getPngFromSvg"], svgString: content});
+    let respParsed = JSON.parse(await invoke("nim_caller", {name}));
+    let blob = null;
+    if (respParsed.result){
+        blob = base64StringToBlob(respParsed.base64, "image/png");
     }
+    return blob;
 }
-
