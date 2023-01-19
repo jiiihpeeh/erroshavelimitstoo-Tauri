@@ -59,15 +59,9 @@ export const runLatex = async(content, savePath) => {
 
 export const systemPython = async(directory) => {
     let name = JSON.stringify({call: enums["init"], folder: directory});
-    console.log(name)
+    console.log(name);
     const resp = await invoke("nim_caller", {name});
-    console.log(resp)
-    switch(resp){
-        case "true":
-            return true;
-        default:
-            return false;
-    }
+    return JSON.parse(resp);
 }
 
 export const runSympy = async (data) =>{
@@ -81,13 +75,9 @@ export const runSympy = async (data) =>{
 export const fileWriter = async(path, content)=> {
     const name = JSON.stringify({call: enums["write"], content: content, target: path});
     let resp = await invoke("nim_caller", {name});
-    switch(resp){
-        case 'true':
-            return true;
-        default:
-            return false;
-    }
+    return JSON.parse(resp);
 }
+
 export const fileExists = async(name) => {
     return await invoke("file_exists", {name});
 }
