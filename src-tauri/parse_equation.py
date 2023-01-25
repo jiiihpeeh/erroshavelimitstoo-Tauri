@@ -1,19 +1,15 @@
  
-#from sympy.parsing.maxima import parse_maxima 
+from sympy.parsing.maxima import parse_maxima 
 from sympy import diff
 from sympy.parsing.sympy_parser import parse_expr
-#from sympy.printing.latex import print_latex
+from sympy.printing.latex import print_latex
 from sympy import Symbol
 from  sympy import latex
 from sympy import sqrt, simplify
-#from sympy import symbols
 from re import compile 
-try:
-    import ujson as json
-except:
-    import json
+from sympy import symbols
 
-DELTA : str = 'ERRORdeltaEXPRESSION'
+DELTA= 'ERRORdeltaEXPRESSION'
 lambda_find= compile('(?<=[\*\-+\\\\\s=\(/])lambda(?=[\*\-+\\\\\s=\)/])')
 symbol_dict = {'C': Symbol('C', positive=True, real=True), 'O': Symbol('O', positive=True, real=True), 'Q': Symbol('Q', positive=True, real=True),
                'N': Symbol('N', positive=True, real=True), 'I': Symbol('I', positive=True, real=True), 'E': Symbol('E', positive=True, real=True), 
@@ -112,39 +108,37 @@ def evaluate_eq(eq, value_dict, eq_values):
         return None
     
 
-def parse(eq: str)->str:
-    try:
-        original_eq = eq    
-        evaluator = Evaluator(eq)
-        evaluator.error_eq()
+def tenExp(s:str)->str:
+    if s == 'None':
+        return s
+    k= s.split('e')
+    if len(k) != 2:
+        return s
+    return k[0] + '\cdot 10 ^ {'+ k[1].replace('+','') + '}'
 
-        return json.dumps({
-                "original_equation": original_eq,
-                "tex": evaluator.parsed_tex(), 
-                "tex_eval": evaluator.parsed_tex(simplified=True), 
-                "tex_prefix" : evaluator.eq_prefix_tex,
-                "tex_error_prefix": '\\delta '+ evaluator.eq_prefix_tex if  evaluator.eq_prefix_tex != '' else '',
-                "diff_parts_tex": [latex(i).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\') for i in evaluator.differentiated_parts()],
-                "error_term_tex": latex(evaluator.error_equation).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\'),
-                "error_term_simplified_tex": latex(evaluator.error_equation_simplified).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\'),
-                "error_equation": evaluator.error_equation_construct,
-                "error_str": str(evaluator.error_equation),
-                "used_symbols": evaluator.used_symbols
-                })
-    except Exception as e: 
-        print(e)
-        return "Failed"
+def parse(eq):
+    original_eq = eq    
+    evaluator = Evaluator(eq)
+    evaluator.error_eq()
 
-def calculate(body_str : str)->str:
-    try:
-        body: dict = json.loads(body_str)
-        eq=body["original_equation"]
-        error_eq=body["original_error"]
-        values = body["values"]
-        used_symbols=body["used_symbols"]
-        new_dict, eq_values = evaluation_dict(values,used_symbols)
+    return {
+            "original_equation": original_eq,
+            "tex": evaluator.parsed_tex(), 
+            "tex_eval": evaluator.parsed_tex(simplified=True), 
+            "tex_prefix" : evaluator.eq_prefix_tex,
+            "tex_error_prefix": '\\delta '+ evaluator.eq_prefix_tex if  evaluator.eq_prefix_tex != '' else '',
+            "diff_parts_tex": [latex(i).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\') for i in evaluator.differentiated_parts()],
+            "error_term_tex": latex(evaluator.error_equation).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\'),
+            "error_term_simplified_tex": latex(evaluator.error_equation_simplified).replace(DELTA,'\\delta ').replace('ExtraTeXPart','\\'),
+            "error_equation": evaluator.error_equation_construct,
+            "error_str": str(evaluator.error_equation),
+            "used_symbols": evaluator.used_symbols
+            }
 
-        return json.dumps({'result':evaluate_eq(eq,new_dict, eq_values), "error":evaluate_eq(error_eq, new_dict, eq_values)})
-    except Exception as e: 
-        print(e)
-        return "Failed"
+def calculate(body):
+    eq=body["original_equation"]
+    error_eq=body["original_error"]
+    values = body["values"]
+    used_symbols=body["used_symbols"]
+    new_dict, eq_values = evaluation_dict(values,used_symbols)
+    return {'result': tenExp(str(evaluate_eq(eq,new_dict, eq_values))), "error": tenExp(str(evaluate_eq(error_eq, new_dict, eq_values)))}
