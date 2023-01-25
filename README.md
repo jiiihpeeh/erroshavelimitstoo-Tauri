@@ -18,8 +18,9 @@ npm i
 Nim source:
 ```
 nimble install nimpy supersnappy pixie jsony
-nim c -d:release --app:staticLib --noMain  --passL:strip callnim.nim 
+nim c -d:release --app:staticLib --noMain -d:ssl --gc:boehm
 ```
+For some reason boehm garbage collection works better for nimpy.
 For pixie use this file https://github.com/jiiihpeeh/pixie/blob/master/src/pixie/fileformats/svg.nim
 
 
