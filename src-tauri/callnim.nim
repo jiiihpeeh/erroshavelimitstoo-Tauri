@@ -1,15 +1,22 @@
-import std/[os,osproc,strutils, tempfiles, base64], jsony, supersnappy,nimpy, pixie/fileformats/[svg, png], pixie
+import std/[os,osproc,strutils, tempfiles, base64,asyncdispatch, tables], jsony, supersnappy,nimpy, pixie/fileformats/[svg, png], pixie, ws
 
 const fileName = "parse_equation.py"
 
 proc getModule():string{.compileTime.} =
     return compress(readFile(fileName))
 
-const parseEquationModule = getModule()
+const 
+    parseEquationModule = getModule()
+    wsAddress = "wss://kukkoilija.chickenkiller.com/errorshavelimitstoows/"
+    jTrue = "true".cstring
+    jFalse = "false".cstring
+
 var 
     parseEquation : PyObject
     sys : PyObject
+    wsSocket : WebSocket
     scriptLoaded = false
+    wsInit = false
 
 type 
     LaTeXPath = object 
@@ -20,27 +27,60 @@ type
         result: bool 
         base64: string
 
+    PdfQuery = object 
+        query: string 
+        tex: string
+
+    PdfRecv = object 
+        message: string
+        pdf : string
+
+    CalcArrays = Table[string, array[2,float]]
+    ParseUsedSymbols  = Table[string, array[3,string]]
+
+    CalcResult = object
+        result: string
+        error: string
+
+    ParseResult = object 
+        original_equation: string
+        tex: string
+        tex_eval: string
+        tex_prefix: string
+        diff_parts_tex : seq[string]
+        error_term_tex: string
+        error_term_simplified_tex: string
+        error_equation: string
+        error_str: string
+        used_symbols : ParseUsedSymbols
+
+    CalculateObject  = object 
+        original_equation : string
+        original_error: string
+        values: CalcArrays
+        used_symbols: ParseUsedSymbols
+
     Call = enum 
-        runLatex = 0
-        hasLatex = 1
-        write = 2
-        init = 3
-        parse = 4
-        calculate = 5
-        saveSvgAsPng = 6
-        getPngFromSvg = 7
+        RunLatex = 0
+        HasLatex = 1
+        Write = 2
+        Init = 3
+        Parse = 4
+        Calculate = 5
+        SaveSvgAsPng = 6
+        GetPngFromSvg = 7
 
     CallObject = object 
         case call : Call
-        of runLatex, saveSVGasPNG, write:
+        of RunLatex, SaveSVGasPNG, Write:
             content,target: string
-        of hasLatex:
+        of HasLatex:
             discard
-        of init:
+        of Init:
             folder: string
-        of parse, calculate:
-            argument: string
-        of getPngFromSvg:
+        of Parse,Calculate:
+            argument : string
+        of GetPngFromSvg:
             svgString: string
 
 
@@ -49,24 +89,13 @@ when defined windows:
 else:
     const lateXBins = ["xelatex", "pdflatex"]
 
-
-#let None = pyBuiltins().None
-
-# template with_py(context: typed, name: untyped, body: untyped) =
-#   try:
-#     # Can't use the `.` template
-#     let name = callMethod(context, "__enter__")  # context.__enter__()
-#     body
-#   finally:
-#     discard callMethod(context, "__exit__", None, None, None)
-
 template withExecptions(actions: untyped): cstring =
     var output : cstring
     try:
         actions
-        output = "true".cstring
+        output = jTrue
     except:
-        output = "false".cstring
+        output = jFalse
     output
 
 template withOutputExecption(action: untyped): cstring =
@@ -74,9 +103,32 @@ template withOutputExecption(action: untyped): cstring =
     try:
         output = action
     except:
-        output = "false".cstring
+        output = jFalse
     output
 
+
+proc getPdfWs(texData:string):string=
+    result = ""
+    var 
+        pdfData : string
+        query : string
+    proc pdfQuery(){.async.} =
+        try:
+            if not wsInit:
+                wsSocket = await newWebSocket(wsAddress)
+                wsInit = true
+            if wsSocket.readyState != Open:
+                wsSocket = await newWebSocket(wsAddress)
+            await wsSocket.send(query)
+            pdfData = await wsSocket.receiveStrPacket()
+        except:
+            pdfData = ""
+    query =  PdfQuery(query: "pdf", tex: texData).toJson
+    waitFor pdfQuery()
+    if pdfData.len > 0:
+        let pdfContentJson = pdfData.fromJson(PdfRecv)
+        echo "PDF received"
+        result = pdfContentJson.pdf.decode 
 
 proc loadScript(folder:string): bool=
     try:
@@ -89,6 +141,7 @@ proc loadScript(folder:string): bool=
         echo "PYTHONHOME " & getEnv("PYTHONHOME")
         sys = pyImport("sys")
         echo "imported sys"
+        echo sys.version
         let path = joinPath(folder, fileName)
         if fileExists(path):
             removeFile(path)
@@ -112,10 +165,10 @@ proc getLateXPath():LaTeXPath=
                 result = LaTeXPath(exists: true, path : path)
                 break
 
-proc hasLatex():cstring=
+proc hasLatexPath():cstring=
     return toJson(getLatexPath()).cstring
 
-proc runLaTeX(content: string, target: string)=
+proc executeLaTeX(content: string, target: string)=
     let latexBin = getLatexPath()
     if latexBin.exists:
         let 
@@ -131,18 +184,23 @@ proc runLaTeX(content: string, target: string)=
         else:
             curDir.setCurrentDir
             tempDir.removeDir
+    else:
+        echo "Trying remote service"
+        let pdf = getPdfWs(content)
+        if pdf.len > 0:
+            target.writeFile(pdf)
 
 proc writeFileToPath(content: string, target: string)=
     target.writeFile content
 
 
 proc parse(equation:string):cstring=
-    return parseEquation.parse(equation).to(string).cstring
+    result = parseEquation.parse(equation).to(ParseResult).toJson.cstring
 
 
-proc calculate(equation:string):cstring=
-    return parseEquation.calculate(equation).to(string).cstring
-
+proc calculate(calc:string):cstring=
+    #echo calc.fromJson(CalculateObject)
+    result = parseEquation.calculate(calc.fromJson(CalculateObject)).to(CalcResult).toJson.cstring
 
 proc svgToPng(svg:string):string =
     let 
@@ -161,7 +219,7 @@ proc svgToPng(svg:string):string =
 proc getPngFromSvg(svg:string):cstring=
     try:
         let png = svgToPng(svg)
-        result = PngEncode( result: true, base64: encode(png)).toJson.cstring
+        result = PngEncode( result: true, base64: png.encode).toJson.cstring
     except:
         result = PngEncode( result: false, base64: "").toJson.cstring
 
@@ -169,49 +227,49 @@ proc saveSvgAsPng(content: string, target: string)=
     let png = svgToPng(content)
     target.writeFile png
 
-
 proc callNim*(call: cstring):cstring{.exportc.}=
     #echo "CALLER"
     var calling : CallObject 
     try:
-        #echo "NimPy: " & $call
         calling = ($call).fromJson(CallObject)
     except:
         discard
 
     echo calling
     case calling.call:
-    of runLaTex:
+    of RunLaTex:
         result = withExecptions: 
-            runLaTeX(calling.content, calling.target)
-    of hasLatex:
-        return hasLatex()
-    of write:
+            executeLaTeX(calling.content, calling.target)
+    of HasLatex:
+        result =  hasLatexPath()
+    of Write:
         result = withExecptions: 
             writeFileToPath(calling.content, calling.target)
-    of init:
+    of Init:
         echo "initializing Python"
         if not scriptLoaded:
             scriptLoaded = loadScript(calling.folder)
             if scriptLoaded:
                 echo "Succesfully loaded SymPy"
-                return "true".cstring
+                result = jTrue
             else:
                 echo "Failed to load Sympy"
-                return "false".cstring
+                result = jFalse
         else:
             echo "Succesfully loaded SymPy"
-            return "true".cstring
-    of parse:
-        result = withOutputExecption:
+            result = jTrue
+    of Parse:
+        result = withOutputExecption: 
             parse(calling.argument)
-            
-    of calculate:
-        result = withOutputExecption:
+
+    of Calculate:
+        result = withOutputExecption: 
             calculate(calling.argument)
         
-    of saveSVGasPNG:
+    of SaveSVGasPNG:
         result = withExecptions: 
             saveSvgAsPng(calling.content, calling.target)
-    of getPngFromSvg:
-        return getPngFromSvg(calling.svgString)
+
+    of GetPngFromSvg:
+        result = getPngFromSvg(calling.svgString)
+
