@@ -17,7 +17,7 @@ npm i
 
 Nim source:
 ```
-nimble install nimpy supersnappy pixie jsony
+nimble install nimpy supersnappy pixie jsony  ws
 nim c -d:release --app:staticLib --noMain -d:ssl --gc:boehm
 ```
 For some reason boehm garbage collection works better for nimpy.
