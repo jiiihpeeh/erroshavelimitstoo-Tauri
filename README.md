@@ -6,7 +6,7 @@ If you want PDF export LaTeX is needed too (either `xelatex` or `pdflatex`) and 
 
 Easy way:
 
-https://github.com/jiiihpeeh/erroshavelimitstoo-Tauri/releases/tag/0.3.0
+https://github.com/jiiihpeeh/erroshavelimitstoo-Tauri/releases/tag/0.3.5
 
 Building
 
