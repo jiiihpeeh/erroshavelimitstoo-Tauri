@@ -17,8 +17,14 @@ var
     wsSocket : WebSocket
     scriptLoaded = false
     wsInit = false
+    clipboard = false
 
 type 
+    Session = enum 
+        Wayland
+        Xorg
+        Default
+
     LaTeXPath = object 
         exists: bool
         path : string
@@ -69,19 +75,45 @@ type
         Calculate = 5
         SaveSvgAsPng = 6
         GetPngFromSvg = 7
+        CopyPngToClipboard = 8
+        ClipboardSupport = 9
 
     CallObject = object 
         case call : Call
         of RunLatex, SaveSVGasPNG, Write:
             content,target: string
-        of HasLatex:
+        of HasLatex, ClipboardSupport:
             discard
         of Init:
             folder: string
         of Parse,Calculate:
             argument : string
-        of GetPngFromSvg:
+        of GetPngFromSvg,CopyPngToClipboard:
             svgString: string
+
+proc getSession():Session =
+    when defined(linux):
+        if getEnv("XDG_SESSION_TYPE") == "wayland":
+            result = Wayland
+        else:
+            result = Xorg
+    else:
+        result = Default
+
+let session = getSession()
+
+
+proc clipBoardSupported()=
+    when defined(linux):
+        clipboard = true
+        if session == Wayland:
+            if findExe("wl-copy") == "":
+                clipboard = false
+        else:
+            if findExe("xclip") == "":
+                clipboard = false
+    else:
+        clipboard = false
 
 
 when defined windows:
@@ -98,7 +130,7 @@ template withExecptions(actions: untyped): cstring =
         output = jFalse
     output
 
-template withOutputExecption(action: untyped): cstring =
+template withOutputExecptions(action: untyped): cstring =
     var output : cstring
     try:
         output = action
@@ -216,10 +248,10 @@ proc svgToPng(svg:string):string =
     image.draw(img,scale(vec2(scaleF, scaleF)))
     result = encodePng(image)
 
-proc getPngFromSvg(svg:string):cstring=
+proc getPngFromSvg(svgString:string):cstring=
     try:
-        let png = svgToPng(svg)
-        result = PngEncode( result: true, base64: png.encode).toJson.cstring
+        let png = svgString.svgToPng.encode
+        result = PngEncode(result: true, base64: png).toJson.cstring
     except:
         result = PngEncode( result: false, base64: "").toJson.cstring
 
@@ -227,8 +259,40 @@ proc saveSvgAsPng(content: string, target: string)=
     let png = svgToPng(content)
     target.writeFile png
 
+
+
+proc copyPngToClipboard(svgString:string)=
+    when defined(linux):
+        if clipBoard:
+            let tempPngFile = createTempFile(prefix="errorshavelimits",suffix=".png")
+            saveSvgAsPng(svgString,tempPngFile.path)
+            var copyScript = ""
+            if session == Wayland:
+                copyScript = "#!/bin/sh\nwl-copy < " & tempPngFile.path & "\nexit $?"
+            else:
+                copyScript = "#!/bin/sh\nxclip -selection clipboard -t image/png " & tempPngFile.path & "\nexit $?"
+            let tempScriptFile = createTempFile(prefix="errrorshavelimits", suffix=".sh")
+            writeFile(tempScriptFile.path, copyScript)
+            let exitCode = execCmd("sh " & tempScriptFile.path)
+            echo copyScript
+            removeFile tempPngFile.path
+            removeFile tempScriptFile.path
+            echo exitCode
+            if exitCode != 0:
+                raise newException(OSError, "Exit code")
+        else:
+            if session == Wayland:
+                echo "Install wl-clipboard"
+            else:
+                echo "install xclip"
+            raise newException(OSError, "Not supported")
+    else:
+        raise newException(OSError, "Not supported")
+
 proc callNim*(call: cstring):cstring{.exportc.}=
-    #echo "CALLER"
+    #echo "CALLER" 
+    #echo appFolder
+
     var calling : CallObject 
     try:
         calling = ($call).fromJson(CallObject)
@@ -238,12 +302,12 @@ proc callNim*(call: cstring):cstring{.exportc.}=
     echo calling
     case calling.call:
     of RunLaTex:
-        result = withExecptions: 
+        result = withExecptions:
             executeLaTeX(calling.content, calling.target)
     of HasLatex:
         result =  hasLatexPath()
     of Write:
-        result = withExecptions: 
+        result = withExecptions:
             writeFileToPath(calling.content, calling.target)
     of Init:
         echo "initializing Python"
@@ -259,17 +323,28 @@ proc callNim*(call: cstring):cstring{.exportc.}=
             echo "Succesfully loaded SymPy"
             result = jTrue
     of Parse:
-        result = withOutputExecption: 
+        result = withOutputExecptions:
             parse(calling.argument)
 
     of Calculate:
-        result = withOutputExecption: 
+        result = withOutputExecptions:
             calculate(calling.argument)
         
     of SaveSVGasPNG:
-        result = withExecptions: 
+        result = withExecptions:
             saveSvgAsPng(calling.content, calling.target)
 
     of GetPngFromSvg:
-        result = getPngFromSvg(calling.svgString)
+        result = withOutputExecptions:
+            getPngFromSvg(calling.svgString)
+
+    of CopyPngToClipboard:
+        result = withExecptions:
+            copyPngToClipboard(calling.svgString)
+
+    of ClipboardSupport:
+        clipBoardSupported()
+        echo ["Session:", $ session ,"Clipboard binary found:", $ clipboard].join(" ")
+        result = ($clipboard).cstring
+
 
