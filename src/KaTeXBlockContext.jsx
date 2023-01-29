@@ -5,10 +5,12 @@ import mathJaxSVGConverter from "./MathJaxSVG";
 import SaveTextFile from "./SaveTextFile";
 import {saveEquationPng} from "./SaveExt";
 import { copyToClipboard, copyBlobToClipboard } from "./copy";
-import { getPngFromSvg } from "./invokers";
+import { getPngFromSvg, clipboardPNGSupport, copyPngToClipboard } from "./invokers";
 import 'katex/dist/katex.min.css';
+import { notification } from "./notification";
 
-
+let pngSupport = await clipboardPNGSupport();
+console.log("PNG support", pngSupport)
 const getTexCode = (id) => {
     let katexData = document.getElementById(id);
     return katexData.outerHTML.split('<annotation encoding="application/x-tex">')[1].split('</annotation>')[0];
@@ -35,17 +37,27 @@ const KaTeXBlockContent = (props) => {
                             saveEquationPng(data);
                             break;
                         case 'copy':
-                            let blobData = await  getPngFromSvg(data);
-                            copyBlobToClipboard(blobData);
+                            if(!pngSupport){
+                                pngSupport = await clipboardPNGSupport()
+                            }
+                            if(pngSupport){
+                                let res = await copyPngToClipboard(data);
+                                if(!res){
+                                    notification("Failed", "Failed to copy Clipboard")
+                                }
+                            }else{
+                                let blobData = await  getPngFromSvg(data);
+                                copyBlobToClipboard(blobData);
+                            }
                             break;
                         default:
                             break;
                     }
                     break;
                 case 'svg':
-                    const texData = getTexCode(id)
+                    const texData = getTexCode(id);
                     let svgData = mathJaxSVGConverter(texData);
-                    console.log(svgData)
+                    console.log(svgData);
                     switch(action){
                         case 'copy':
                             copyToClipboard(svgData);
