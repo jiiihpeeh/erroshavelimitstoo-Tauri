@@ -20,6 +20,6 @@ export const copyBlobToClipboard = async (blob)=> {
         await navigator.clipboard.write(data);
     }catch(err){
         console.log(err);
-        notification("Failed to copy", "No support for image to clipboard functionality", "error",5000);
+        notification("Failed to copy", "No support for image to clipboard functionality. On linux install wl-cipboard or xclip depending on your display session", "error",5000);
     }
 }
