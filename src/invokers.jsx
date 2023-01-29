@@ -3,27 +3,29 @@ import { base64StringToBlob, blobToDataURL } from 'blob-util';
 
 /* 
 Call = enum 
-runLatex = 0
-hasLatex = 1
-write = 2
-init = 3
-parse = 4
-calculate = 5
-saveSvgAsPng = 6
-getPngFromSvg = 7
+    RunLatex = 0
+    HasLatex = 1
+    Write = 2
+    Init = 3
+    Parse = 4
+    Calculate = 5
+    SaveSvgAsPng = 6
+    GetPngFromSvg = 7
+    CopyPngToClipboard = 8
+    ClipboardSupport = 9
 
 CallObject = object 
-case call : Call
-of runLatex, saveSVGasPNG, write:
-    content,target: string
-of hasLatex:
-    discard
-of init:
-    folder: string
-of parse, calculate:
-    argument: string
-of getPngFromSvg:
-    svgString: string 
+    case call : Call
+    of RunLatex, SaveSVGasPNG, Write:
+        content,target: string
+    of HasLatex, ClipboardSupport:
+        discard
+    of Init:
+        folder: string
+    of Parse,Calculate:
+        argument : string
+    of GetPngFromSvg,CopyPngToClipboard:
+        svgString: string
 */
 
 
@@ -35,9 +37,10 @@ const enums = {
     parse: 4,
     calculate:  5,
     saveSvgAsPng : 6,
-    getPngFromSvg : 7
+    getPngFromSvg : 7,
+    copyPngToClipboard : 8,
+    clipboardSupport :9
 }
-
 
 export const hasLatex = async() =>{
     let name = JSON.stringify({call: enums["hasLatex"]})
@@ -51,7 +54,8 @@ export const runLatex = async(content, savePath) => {
 }
 
 export const systemPython = async(directory) => {
-    let name = JSON.stringify({call: enums["init"], folder: directory});
+    let appDirectory = directory;
+    let name = JSON.stringify({call: enums["init"], folder: appDirectory});
     console.log(name)
     const resp = await invoke("nim_caller", {name});
     return JSON.parse(resp)
@@ -92,3 +96,14 @@ export const getPngFromSvg = async(content) => {
     return blob;
 }
 
+export const copyPngToClipboard = async(content) => {
+    const name = JSON.stringify({call: enums["copyPngToClipboard"], svgString: content});
+    let resp = JSON.parse(await invoke("nim_caller", {name}));
+    return resp;
+}
+
+export const clipboardPNGSupport = async() => {
+    const name = JSON.stringify({call: enums["clipboardSupport"]});
+    let resp = JSON.parse(await invoke("nim_caller", {name}));
+    return resp;
+}
