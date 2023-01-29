@@ -39,14 +39,14 @@ const SelectTex = (props) => {
                 }
                 parts_eq = parts_eq + sumParts.join(' + ');
                 parts_eq = parts_eq + "}";
-                error_equations_parts.base = `${equation.tex_error_prefix} = ${construction} ${parts_eq}`;
+                error_equations_parts.base = `\\delta ${equation.tex_prefix} = ${construction} ${parts_eq}`;
                 error_equations_parts.parts = eq_parts;
                 
             }
             if(error_equation.basic && error_equation.simplified && (equation.basic === equation.simplified)){
-                error_equations = `${equation.tex_error_prefix} = ${construction} ${equation.error_term_tex} = ${equation.error_term_simplified_tex}`;
+                error_equations = `\\delta ${equation.tex_prefix} = ${construction} ${equation.error_term_tex} = ${equation.error_term_simplified_tex}`;
             }else{
-                error_equations = `${equation.tex_error_prefix} = ${construction} ${equation.error_term_tex}`;
+                error_equations = `\\delta ${equation.tex_prefix} = ${construction} ${equation.error_term_tex}`;
             }
         }
         if(settings.include_result !== "none" && evaluated){
