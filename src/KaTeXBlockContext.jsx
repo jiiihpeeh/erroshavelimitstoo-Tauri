@@ -9,7 +9,7 @@ import { getPngFromSvg, clipboardPNGSupport, copyPngToClipboard } from "./invoke
 import 'katex/dist/katex.min.css';
 import { notification } from "./notification";
 
-let pngSupport = await clipboardPNGSupport();
+let pngSupport =false;
 console.log("PNG support", pngSupport)
 const getTexCode = (id) => {
     let katexData = document.getElementById(id);
