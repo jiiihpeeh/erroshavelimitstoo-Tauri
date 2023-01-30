@@ -17,7 +17,7 @@ const ShowResult = () => {
                     <InlineMath>
                         {`${equation.tex_prefix} \\pm \\delta ${equation.tex_prefix} = ${evaluated.result} \\pm ${evaluated.error}`}
                     </InlineMath>
-                    <Tooltip label="SymPy might not handle division by zero correctly">
+                    <Tooltip label="SymPy evaluation is not going to track plausible division by zero">
                         <QuestionIcon/>
                     </Tooltip>
                     </HStack>
