@@ -8,11 +8,29 @@
   },
   "package": {
     "productName": "errors-have-limits-too",
-    "version": "0.3.5"
+    "version": "0.4.5"
   },
   "tauri": {
     "allowlist": {
-      "all": true
+
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "path": {
+        "all": true
+      },
+      "clipboard": {
+        "all": true,
+        "writeText": true,
+        "readText": true
+      },
+      "dialog": {
+        "all": true,
+        "open": true,
+        "save": true
+      }
     },
     "bundle": {
       "active": true,
@@ -29,7 +47,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.errorshavelimitstoo.dev",
+      "identifier": "com.errorshavelimits.dev",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

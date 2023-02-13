@@ -1,16 +1,20 @@
 import std/[os,osproc,strutils, tempfiles, base64,asyncdispatch, tables], jsony, supersnappy,nimpy, pixie/fileformats/[svg, png], pixie, ws
 
-const fileName = "parse_equation.py"
+const moduleFile = "parse_equation.py"
 
 proc getModule():string{.compileTime.} =
-    return compress(readFile(fileName))
+    result = moduleFile.readFile.compress
 
 const 
     parseEquationModule = getModule()
-    wsAddress = "wss://kukkoilija.chickenkiller.com/errorshavelimitstoows/"
+    wsTeXAddress = "wss://kukkoilija.chickenkiller.com/errorshavelimitstoows/"
     jTrue = "true".cstring
     jFalse = "false".cstring
+    lateXBins = ["xelatex", "pdflatex"]
 
+type AppDir = object 
+    inserted: bool
+    path : string
 var 
     parseEquation : PyObject
     sys : PyObject
@@ -18,6 +22,7 @@ var
     scriptLoaded = false
     wsInit = false
     clipboard = false
+    appDir : AppDir
 
 type 
     Session = enum 
@@ -77,19 +82,22 @@ type
         GetPngFromSvg = 7
         CopyPngToClipboard = 8
         ClipboardSupport = 9
+        SetAppDir = 10
+        NotValid = 11
+        
 
     CallObject = object 
         case call : Call
-        of RunLatex, SaveSVGasPNG, Write:
+        of RunLatex, SaveSVGasPNG, Write, NotValid:
             content,target: string
-        of HasLatex, ClipboardSupport:
+        of HasLatex, ClipboardSupport, Init:
             discard
-        of Init:
-            folder: string
         of Parse,Calculate:
             argument : string
         of GetPngFromSvg,CopyPngToClipboard:
             svgString: string
+        of SetAppDir:
+            directory: string
 
 proc getSession():Session =
     when defined(linux):
@@ -102,7 +110,6 @@ proc getSession():Session =
 
 let session = getSession()
 
-
 proc clipBoardSupported()=
     when defined(linux):
         clipboard = true
@@ -114,12 +121,11 @@ proc clipBoardSupported()=
                 clipboard = false
     else:
         clipboard = false
+    echo ["Session:", $ session ,"Clipboard binary found:", $ clipboard].join(" ")
 
-
-when defined windows:
-    const lateXBins = ["xelatex.exe", "pdflatex.exe"]
-else:
-    const lateXBins = ["xelatex", "pdflatex"]
+proc hasImageToClipboard():cstring=
+    clipBoardSupported()
+    result = clipboard.toJson.cstring
 
 template withExecptions(actions: untyped): cstring =
     var output : cstring
@@ -138,7 +144,6 @@ template withOutputExecptions(action: untyped): cstring =
         output = jFalse
     output
 
-
 proc getPdfWs(texData:string):string=
     result = ""
     var 
@@ -147,10 +152,10 @@ proc getPdfWs(texData:string):string=
     proc pdfQuery(){.async.} =
         try:
             if not wsInit:
-                wsSocket = await newWebSocket(wsAddress)
+                wsSocket = await newWebSocket(wsTeXAddress)
                 wsInit = true
             if wsSocket.readyState != Open:
-                wsSocket = await newWebSocket(wsAddress)
+                wsSocket = await newWebSocket(wsTeXAddress)
             await wsSocket.send(query)
             pdfData = await wsSocket.receiveStrPacket()
         except:
@@ -162,57 +167,70 @@ proc getPdfWs(texData:string):string=
         echo "PDF received"
         result = pdfContentJson.pdf.decode 
 
-proc loadScript(folder:string): bool=
-    try:
-        #check PYTHONHOME to solve problems with AppImage
-        echo "loading sys"
-        let pyEnv = getEnv("PYTHONHOME")
-        if pyEnv.startsWith("/tmp/.mount"):
-            let newPath = "/" & pyEnv.split("/")[3..^1].join("/")
-            putEnv("PYTHONHOME", newPath)
-        echo "PYTHONHOME " & getEnv("PYTHONHOME")
-        sys = pyImport("sys")
-        echo "imported sys"
-        echo sys.version
-        let path = joinPath(folder, fileName)
-        if fileExists(path):
-            removeFile(path)
-        let pychacheDir = joinPath(folder,"__pycache__")
-        if dirExists(pychacheDir):
-            removeDir(pychacheDir)
-        path.writeFile parseEquationModule.uncompress
-        discard sys.path.append(folder.cstring)
-        let moduleName = fileName[0..^4].cstring
-        parseEquation = pyImport(moduleName)
-        return true
-    except:
-        return false
+proc loadScript(): cstring =
+    echo appDir
+    if not scriptLoaded and appDir.inserted:
+        echo "initializing Python"
+        try:
+            #check PYTHONHOME to solve problems with AppImage
+            echo "loading sys"
+            let pyEnv = getEnv("PYTHONHOME")
+            if pyEnv.startsWith("/tmp/.mount"):
+                let newPath = "/" & pyEnv.split("/")[3..^1].join("/")
+                putEnv("PYTHONHOME", newPath)
+            echo "PYTHONHOME " & getEnv("PYTHONHOME")
+            sys = pyImport("sys")
+            echo "imported sys"
+            echo sys.version
+            let path = joinPath(appDir.path, moduleFile)
+            if fileExists(path):
+                removeFile(path)
+            let pychacheDir = joinPath(appDir.path,"__pycache__")
+            if dirExists(pychacheDir):
+                removeDir(pychacheDir)
+            path.writeFile parseEquationModule.uncompress
+            discard sys.path.append(appDir.path.cstring)
+            let moduleName = moduleFile[0..^4].cstring
+            parseEquation = pyImport(moduleName)
+            scriptLoaded = true
+            result = jTrue
+            echo "Loaded SymPy"
+        except:
+            echo "Failed to load SymPy"
+            result = jFalse
+    elif not scriptLoaded:
+        result = jFalse
+    else:
+        echo "SymPy already initialized"
+        result = jTrue
 
 proc getLateXPath():LaTeXPath=
-    let paths = getEnv("PATH").split(":")
-    for d in paths:
-        for l in lateXBins:
-            let path = joinPath(d, l)
-            if fileExists(path):
-                result = LaTeXPath(exists: true, path : path)
-                break
+    for l in lateXBins:
+        let path = findExe(l, false)
+        if fileExists(path):
+            result = LaTeXPath(exists: true, path : path)
+            break
 
 proc hasLatexPath():cstring=
-    return toJson(getLatexPath()).cstring
+    result = getLatexPath().toJson.cstring
 
-proc executeLaTeX(content: string, target: string)=
+proc executeLaTeX(content: string, target: string):cstring=
+    result = jFalse
     let latexBin = getLatexPath()
     if latexBin.exists:
         let 
             curDir = getCurrentDir()
             tempDir = createTempDir("errorshavelimits", "_temp")
         tempDir.setCurrentDir
+        echo "TempDir: "    & tempDir
         "temp.tex".writeFile content
+        echo latexBin.path & " temp.tex"
         let exitCode = execCmd(latexBin.path & " temp.tex")
         if exitCode == 0:
             "temp.pdf".moveFile target
             curDir.setCurrentDir
             tempDir.removeDir
+            result = jTrue
         else:
             curDir.setCurrentDir
             tempDir.removeDir
@@ -221,14 +239,13 @@ proc executeLaTeX(content: string, target: string)=
         let pdf = getPdfWs(content)
         if pdf.len > 0:
             target.writeFile(pdf)
+            result = jTrue
 
 proc writeFileToPath(content: string, target: string)=
     target.writeFile content
 
-
 proc parse(equation:string):cstring=
     result = parseEquation.parse(equation).to(ParseResult).toJson.cstring
-
 
 proc calculate(calc:string):cstring=
     #echo calc.fromJson(CalculateObject)
@@ -259,8 +276,6 @@ proc saveSvgAsPng(content: string, target: string)=
     let png = svgToPng(content)
     target.writeFile png
 
-
-
 proc copyPngToClipboard(svgString:string)=
     when defined(linux):
         if clipBoard:
@@ -274,12 +289,15 @@ proc copyPngToClipboard(svgString:string)=
             let tempScriptFile = createTempFile(prefix="errrorshavelimits", suffix=".sh")
             writeFile(tempScriptFile.path, copyScript)
             let exitCode = execCmd("sh " & tempScriptFile.path)
-            echo copyScript
+            #echo copyScript
             removeFile tempPngFile.path
             removeFile tempScriptFile.path
-            echo exitCode
             if exitCode != 0:
+                echo "Failed to copy image to clipboard"
                 raise newException(OSError, "Exit code")
+            else:
+                echo "Copied image to clipboard"
+
         else:
             if session == Wayland:
                 echo "Install wl-clipboard"
@@ -290,45 +308,41 @@ proc copyPngToClipboard(svgString:string)=
         raise newException(OSError, "Not supported")
 
 proc callNim*(call: cstring):cstring{.exportc.}=
-    #echo "CALLER" 
-    #echo appFolder
-
     var calling : CallObject 
     try:
         calling = ($call).fromJson(CallObject)
     except:
-        discard
+        calling = CallObject(call: NotValid)
 
-    echo calling
+    echo calling.call
     case calling.call:
     of RunLaTex:
-        result = withExecptions:
+        result = withOutputExecptions:
             executeLaTeX(calling.content, calling.target)
+
     of HasLatex:
         result =  hasLatexPath()
+
     of Write:
         result = withExecptions:
             writeFileToPath(calling.content, calling.target)
     of Init:
-        echo "initializing Python"
-        if not scriptLoaded:
-            scriptLoaded = loadScript(calling.folder)
-            if scriptLoaded:
-                echo "Succesfully loaded SymPy"
-                result = jTrue
-            else:
-                echo "Failed to load Sympy"
-                result = jFalse
-        else:
-            echo "Succesfully loaded SymPy"
-            result = jTrue
-    of Parse:
         result = withOutputExecptions:
-            parse(calling.argument)
+            loadScript()
+
+    of Parse:
+        if scriptLoaded:
+            result = withOutputExecptions:
+                parse(calling.argument)
+        else:
+            result = jFalse
 
     of Calculate:
-        result = withOutputExecptions:
-            calculate(calling.argument)
+        if scriptLoaded:
+            result = withOutputExecptions:
+                calculate(calling.argument)
+        else:
+            result = jFalse
         
     of SaveSVGasPNG:
         result = withExecptions:
@@ -343,8 +357,16 @@ proc callNim*(call: cstring):cstring{.exportc.}=
             copyPngToClipboard(calling.svgString)
 
     of ClipboardSupport:
-        clipBoardSupported()
-        echo ["Session:", $ session ,"Clipboard binary found:", $ clipboard].join(" ")
-        result = ($clipboard).cstring
+        result = withOutputExecptions:
+            hasImageToClipboard()
+    
+    of NotValid:
+        result = jFalse
 
+    of SetAppDir:
+        if dirExists(calling.directory):
+            appDir = AppDir( inserted: true, path : calling.directory)
+            result = jTrue
+        else:
+            result = jFalse
 
