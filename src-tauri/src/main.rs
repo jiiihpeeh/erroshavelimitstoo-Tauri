@@ -18,9 +18,7 @@ fn cchar_to_string (s: *const c_char) -> String {
 extern "C" {
     fn NimMain();
     fn callNim(a: *const c_char) -> *const c_char;
-}
-
-
+}  
 
 fn run_nim(args: &str)-> String {
     // initialize nim gc memory, types and stack
@@ -40,14 +38,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![nim_caller,get_env, file_exists])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
+} 
 
 #[tauri::command]
 fn nim_caller(name: &str) -> String {
     //println!("{}", name);
     return run_nim(name);
 }
-
+ 
 #[tauri::command]
 fn get_env(name: String) -> String {
     return  env::var(name).unwrap_or("none".to_string());
@@ -55,5 +53,4 @@ fn get_env(name: String) -> String {
 #[tauri::command]
 fn file_exists(name: &str) -> bool {
     return std::path::Path::new(name).exists();
-}
-
+} 
