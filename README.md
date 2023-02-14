@@ -1,3 +1,5 @@
+[TOC]
+
 # Introduction
 
 This is a GUI tool to estimate error propagation.  It is a Tauri app written mainly in React-typescript, Python and Nim  with minimal Rust. 
@@ -34,7 +36,7 @@ Launch this app using commandline. It may tell something important.
 
 OK.  You'll need to clone this repository. You'll also need `npm` https://nodejs.org/en/, `rust` https://www.rust-lang.org/tools/install and  `nim` https://nim-lang.org/. 
 
-Install `npm` and run this in project's root
+Install `npm` and run in this project's root
 
 ```sh
 npm i
@@ -75,5 +77,4 @@ Congrats?
 ![Screenshot_1](Screenshot_1.png)
 
 ![Screenshot_2](Screenshot_2.png)
-
 
