@@ -34,7 +34,7 @@ Launch this app using commandline. It may tell something important.
 
 OK.  You'll need to clone this repository. You'll also need `npm` https://nodejs.org/en/, `rust` https://www.rust-lang.org/tools/install and  `nim` https://nim-lang.org/. 
 
-Install `npm` and run in this project's root
+Install `npm` and run this in project's root
 
 ```sh
 npm i
@@ -76,8 +76,4 @@ Congrats?
 
 ![Screenshot_2](Screenshot_2.png)
 
-## Recommended IDE Setup
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
